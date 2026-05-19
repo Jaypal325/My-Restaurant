@@ -12,7 +12,12 @@ try:
 except ImportError:
     pass
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_raw_db_url = os.environ.get("DATABASE_URL", "")
+# Ensure SSL is required for Supabase/Vercel compatibility
+if _raw_db_url and "sslmode" not in _raw_db_url:
+    DATABASE_URL = _raw_db_url + ("&" if "?" in _raw_db_url else "?") + "sslmode=require"
+else:
+    DATABASE_URL = _raw_db_url
 STATIC = Path(__file__).parent.parent / "static"
 ADMIN_USER = "Jaypal"
 ADMIN_PASS = "Jaypal"
@@ -569,7 +574,14 @@ def create_custom_field():
 
 @app.errorhandler(Exception)
 def handle_error(exc):
-    return jsonify({"error": str(exc)}), 400
+    import traceback
+    # Distinguish client errors (400) from unexpected server errors (500)
+    client_errors = (ValueError, KeyError, TypeError)
+    status = 400 if isinstance(exc, client_errors) else 500
+    print(f"[ERROR {status}] {type(exc).__name__}: {exc}")
+    if status == 500:
+        traceback.print_exc()
+    return jsonify({"error": str(exc), "type": type(exc).__name__}), status
 
 if DATABASE_URL:
     init_db()
